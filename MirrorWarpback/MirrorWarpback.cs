@@ -28,7 +28,7 @@ namespace MirrorWarpback
         {
             get
             {
-                return "MirrorWarpback";
+                return "MirrorWarpback - Custom";
             }
         }
 
@@ -36,7 +36,7 @@ namespace MirrorWarpback
         {
             get
             {
-                return "Brian Emmons";
+                return "Brian Emmons and Levi Middleton";
             }
         }
 
@@ -44,7 +44,7 @@ namespace MirrorWarpback
         {
             get
             {
-                return "Lets you use a lens item (configurable) to return to the spot where you last used a magic mirror, ice mirror, or cell phone. Requires mw.warpback permission.";
+                return "Lets you use a recall potion to return to the spot where you last used a magic mirror, ice mirror, or cell phone. Requires mw.warpback permission.";
             }
         }
 
