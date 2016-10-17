@@ -1,19 +1,21 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Terraria;
 using TerrariaApi.Server;
+using tShock_Util;
 using TShockAPI;
+using System.IO.Streams;
+using static TShockAPI.GetDataHandlers;
 
 namespace MirrorWarpback
 {
     [ApiVersion(1, 25)]
     public class MirrorWarpback : TerrariaPlugin
     {
-        Config config = Config.Read("mirrorwarpback.json");
-
         public override Version Version
         {
             get
@@ -46,10 +48,17 @@ namespace MirrorWarpback
             }
         }
 
+        public enum WarpbackState
+        {
+            None,
+            WaitingForSpawn,
+            Available
+        }
+
         public class WarpbackData
         {
             private TSPlayer Plr;
-            private bool Avail;
+            private WarpbackState WarpbackState;
             private float X;
             private float Y;
             private PlayerDB.DB db = new PlayerDB.DB("MirrorWarpback", new String[] { "Avail", "X", "Y" });
@@ -69,7 +78,15 @@ namespace MirrorWarpback
             {
                 get
                 {
-                    return Avail;
+                    return WarpbackState == WarpbackState.Available;
+                }
+            }
+
+            public bool WaitingForSpawn
+            {
+                get
+                {
+                    return WarpbackState == WarpbackState.WaitingForSpawn;
                 }
             }
 
@@ -78,8 +95,12 @@ namespace MirrorWarpback
                 Plr = plr;
                 if (Plr.UUID != "")
                 {
-                    Avail = (db.GetUserData(plr, "Avail") == "1");
-                    if (Avail)
+                    if(!Enum.TryParse<WarpbackState>(db.GetUserData(plr, "Avail"), out WarpbackState))
+                    {
+                        WarpbackState = WarpbackState.None;
+                    }
+                    
+                    if (Available)
                     {
                         X = Convert.ToSingle(db.GetUserData(plr, "X"));
                         Y = Convert.ToSingle(db.GetUserData(plr, "Y"));
@@ -87,41 +108,41 @@ namespace MirrorWarpback
                 }
                 else
                 {
-                    TShock.Log.ConsoleError("WARNING: WarbackData initialized before UUID available for " + plr.Name + "!");
+                    TShock.Log.ConsoleError("WARNING: WarpbackData initialized before UUID available for " + plr.Name + "!");
                 }
             }
 
-            public WarpbackData(TSPlayer plr, float x, float y)
+            public void Set(float x, float y, WarpbackState avail)
             {
-                Plr = plr;
-                Set(x, y);
-            }
-
-            public void Set(float x, float y)
-            {
-                Avail = true;
+                WarpbackState = avail;
                 X = x;
                 Y = y;
                 if( Plr.UUID != "" )
-                    db.SetUserData(Plr, new List<string> { "1", Convert.ToString(X), Convert.ToString(Y) });
+                    db.SetUserData(Plr, new List<string> { WarpbackState.ToString(), Convert.ToString(X), Convert.ToString(Y) });
             }
 
             public void Clear()
             {
-                Avail = false;
+                WarpbackState = WarpbackState.None;
                 if( Plr.UUID != "" )
                     db.DelUserData(Plr.UUID);
             }
 
             public void Teleport(byte effect = 1)
             {
-                if (!Avail)
+                if (WarpbackState != WarpbackState.Available)
                     return;
 
                 Plr.Teleport(X, Y, effect);
-                Avail = false;
-                if( Plr.UUID != "" )
-                    db.DelUserData(Plr.UUID);
+                Clear();
+            }
+
+            public void Spawned()
+            {
+                if (WarpbackState != WarpbackState.WaitingForSpawn)
+                    return;
+
+                Set(X, Y, WarpbackState.Available);
             }
         }
 
@@ -136,7 +157,9 @@ namespace MirrorWarpback
         public override void Initialize()
         {
             GetDataHandlers.PlayerUpdate += OnPlayerUpdate;
+            GetDataHandlers.PlayerSpawn += OnPlayerSpawn;
             ServerApi.Hooks.NetGreetPlayer.Register(this, OnGreet);
+            
         }
 
         protected override void Dispose(bool Disposing)
@@ -144,6 +167,7 @@ namespace MirrorWarpback
             if (Disposing)
             {
                 GetDataHandlers.PlayerUpdate -= OnPlayerUpdate;
+                GetDataHandlers.PlayerSpawn -= OnPlayerSpawn;
                 ServerApi.Hooks.NetGreetPlayer.Deregister(this, OnGreet);
             }
             base.Dispose(Disposing);
@@ -165,130 +189,75 @@ namespace MirrorWarpback
                 return;
             }
 
-
-            //int uid = TShock.Players[args.Who].User.ID;
+            
             WarpbackData wb = WarpbackData.Get(TShock.Players[args.Who]);
 
-            /*
-            if( ! wbplayers.ContainsKey(uid) )
-            {
-                wbplayers.Add(uid, new WarpbackData(uid) );
-            }
-            */
-
             if( wb.Available ) {
-                bool haslens = !config.greetRequiresItem;
-                if (!haslens)
-                {
-                    foreach (NetItem thing in TShock.Players[args.Who].PlayerData.inventory)
-                    {
-                        if (thing.NetId == config.returnItemType)
-                            haslens = true;
-                    }
-                }
+                wb.Clear();
+            }
+        }
 
-                if (haslens)
-                {
-                    SendInfoMessageIfPresent(TShock.Players[args.Who], config.msgOnGreet );
-                }
+        private void OnPlayerSpawn(object sender, GetDataHandlers.SpawnEventArgs args)
+        {
+            TSPlayer p = TShock.Players[args.Player];
+            WarpbackData wb = WarpbackData.Get(TShock.Players[args.Player]);
+
+            if(wb.Available)
+            {
+                wb.Teleport(Config.returnEffect);
+                //wb.Clear();
+                //return p.TPlayer.statLife > 0;
+            }
+            else if (wb.WaitingForSpawn)
+            {
+                wb.Spawned();
             }
         }
 
         private void OnPlayerUpdate(object sender, GetDataHandlers.PlayerUpdateEventArgs args)
         {
-            if ((args.Control & 32) == 32)
-            {
-                if (Using[args.PlayerId])
-                    return;
 
-                Using[args.PlayerId] = true;
-
-                //int uid = TShock.Players[args.PlayerId].User.ID;
-                Item it = TShock.Players[args.PlayerId].TPlayer.inventory[args.Item];
-
-                if ( (it.type == 50 || it.type == 3124 || it.type == 3199) && (config.returnItemType != 0) ) // Magic Mirror, Cell Phone, Ice Mirror
-                {
-                    TSPlayer p = TShock.Players[args.PlayerId];
-                    WarpbackData wb = WarpbackData.Get(TShock.Players[args.PlayerId]);
-                    if (p.HasPermission("mw.warpback"))
-                    {
-                        bool haslens = false;
-
-                        foreach (NetItem thing in p.TPlayer.inventory)
-                        {
-                            if (thing.NetId == config.returnItemType)
-                                haslens = true;
-                        }
-
-                        if (haslens)
-                            SendInfoMessageIfPresent(p, config.msgOnMirrorWithLens);
-                        else
-                            SendInfoMessageIfPresent(p, config.msgOnMirrorNoLens);
-
-                        wb.Set(p.X, p.Y);
-                    }
-                }
-                else if (it.type == config.returnItemType && config.returnItemType != 0)
-                {
-                    TSPlayer p = TShock.Players[args.PlayerId];
-                    WarpbackData wb = WarpbackData.Get(TShock.Players[args.PlayerId]);
-
-                    if (p.HasPermission("mw.warpback"))
-                    {
-                        if (wb.Available)
-                        {
-                            SendInfoMessageIfPresent(p, config.msgOnLensSuccess);
-
-                            if (config.returnItemConsume && Main.ServerSideCharacter)
-                            {
-                                if (p.TPlayer.inventory[args.Item].stack > 1)
-                                    p.TPlayer.inventory[args.Item].stack -= 1;
-                                else
-                                    p.TPlayer.inventory[args.Item].type = 0;
-
-                                NetMessage.SendData((int)PacketTypes.PlayerSlot, number:p.Index, number2:args.Item);
-                            }
-                            wb.Teleport(config.returnEffect);
-                        }
-                        else
-                        {
-                            SendInfoMessageIfPresent(p, config.msgOnLensFailure);
-                        }
-                    }
-                }
-                else if ( it.type == config.graveReturnItemType && config.graveReturnItemType != 0 )
-                {
-                    TSPlayer p = TShock.Players[args.PlayerId];
-                    if( p.HasPermission("mw.gravewarp") )
-                    {
-                        if ( p.TPlayer.lastDeathTime.Year > 1980)
-                        {
-                            SendInfoMessageIfPresent(p, config.msgOnWormholeSuccess);
-
-                            if (config.graveReturnItemConsume && Main.ServerSideCharacter)
-                            {
-                                if (p.TPlayer.inventory[args.Item].stack > 1)
-                                    p.TPlayer.inventory[args.Item].stack -= 1;
-                                else
-                                    p.TPlayer.inventory[args.Item].type = 0;
-
-                                NetMessage.SendData((int)PacketTypes.PlayerSlot, number: p.Index, number2: args.Item);
-                            }
-
-                            p.Teleport(p.TPlayer.lastDeathPostion.X, p.TPlayer.lastDeathPostion.Y, config.graveReturnEffect);
-                        }
-                        else
-                        {
-                            SendInfoMessageIfPresent(TShock.Players[args.PlayerId], config.msgOnWormholeFailure);
-                        }
-                    }
-                }
-            } // fi ((args.Control & 32) == 32)
-            else
+            if ((args.Control & 32) != 32)
             {
                 Using[args.PlayerId] = false;
+                return;
             }
 
+            if (Using[args.PlayerId])
+            {
+                return;
+            }
+
+            TSPlayer p = TShock.Players[args.PlayerId];
+            if (!p.HasPermission("mw.warpback"))
+            {
+                return;
+            }
+
+            Using[args.PlayerId] = true;
+                
+            //int uid = TShock.Players[args.PlayerId].User.ID;
+            Item it = TShock.Players[args.PlayerId].TPlayer.inventory[args.Item];
+
+            if ( (it.type == ItemId.Magic_Mirror || it.type == ItemId.Cell_Phone || it.type == ItemId.Ice_Mirror) && (Config.returnItemType != 0) ) // Magic Mirror, Cell Phone, Ice Mirror
+            {
+                WarpbackData wb = WarpbackData.Get(TShock.Players[args.PlayerId]);
+                
+                SendInfoMessageIfPresent(p, Config.msgOnMirrorTeleport);
+                        
+                wb.Set(p.X, p.Y, WarpbackState.WaitingForSpawn);
+            }
+            else if (it.type == Config.returnItemType && Config.returnItemType != 0)
+            {
+                WarpbackData wb = WarpbackData.Get(TShock.Players[args.PlayerId]);
+
+                if(!wb.Available)
+                {
+                    return;
+                }
+                
+                SendInfoMessageIfPresent(p, Config.msgOnWarpbackTeleport);
+            }
         }
     }
 }

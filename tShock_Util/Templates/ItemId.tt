@@ -1,0 +1,101 @@
+﻿<#@ template debug="false" hostspecific="false" language="C#" #>
+<#@ assembly name="System.Core" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.IO" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="System.Text.RegularExpressions" #>
+<#@ output extension=".cs" #>
+using System;
+
+namespace tShock_Util
+{
+	public partial class ItemId
+	{
+		private int _id;
+
+		private ItemId(int id) { _id = id; }
+
+		public static implicit operator int(ItemId item) { return item._id; }
+
+		<#
+        Dictionary<string, string> items = new Dictionary<string, string>();
+		using (FileStream stream = new FileStream(@"E:\ProjectLibrary\tShock\TerrariaServerAPI\Terraria\Item.cs", FileMode.Open))
+        {
+            using (StreamReader reader = new StreamReader(stream))
+            {
+                int state = 0;
+
+                string id = string.Empty;
+                string idLine = string.Empty;
+                while (reader.Peek() != -1)
+                {
+                    string line = reader.ReadLine();
+
+                    switch (state)
+                    {
+                        case 0:
+                            {
+                                MatchCollection matches = Regex.Matches(line, @"public void SetDefaults");
+                                if (matches.Count > 0)
+                                {
+                                    state = 1;
+                                }
+                            }
+                            break;
+                        case 1:
+                            {
+                                foreach (Match m in Regex.Matches(line, @"type [=<>]= (\d+)"))
+                                {
+                                    id = m.Groups[1].Value;
+                                    state = 2;
+                                }
+
+                                MatchCollection matches = Regex.Matches(line, @"public void");
+                                if (matches.Count > 0)
+                                {
+                                    state = 0;
+                                    goto case 0;
+                                }
+                            }
+                            break;
+                        case 2:
+                            {
+                                foreach (Match m in Regex.Matches(line, @"this.name = ""(.+)"""))
+                                {
+                                    string name = Regex.Replace(m.Groups[1].Value.Replace(" ", "_"), @"[^a-zA-Z0-9_]", string.Empty);
+                                    name = Regex.Replace(name, @"^1", "One");
+                                    name = Regex.Replace(name, @"^3", "Three");
+                                    name = Regex.Replace(name, @"^5", "Five");
+                                    if(items.ContainsKey(name))
+                                    {
+                                        name = string.Format("{0}_{1}", name, id);
+                                    }
+                                    items.Add(name, id);
+                                    //Console.WriteLine("{0} - {1}",m.Groups[1].Value, id);
+                                    id = string.Empty;
+                                    state = 1;
+                                }
+
+                                MatchCollection matches = Regex.Matches(line, @"public void");
+                                if (matches.Count > 0)
+                                {
+                                    state = 0;
+                                    goto case 0;
+                                }
+                            }
+                            break;
+                    }
+                }
+            }
+        } 
+		
+		foreach(KeyValuePair<string,string> pair in items)
+		{
+			#>
+				public static readonly ItemId <#= pair.Key #> = new ItemId(<#= pair.Value #>);
+			<#
+		}
+		#>
+	}
+}
