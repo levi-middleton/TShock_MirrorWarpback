@@ -145,8 +145,7 @@ namespace MirrorWarpback
                 Set(X, Y, WarpbackState.Available);
             }
         }
-
-        //public Dictionary<int, WarpbackData> wbplayers = new Dictionary<int, WarpbackData>();
+        
         public bool[] Using = new bool[255];
 
         public MirrorWarpback(Main game) : base(game)
@@ -158,6 +157,7 @@ namespace MirrorWarpback
         {
             GetDataHandlers.PlayerUpdate += OnPlayerUpdate;
             GetDataHandlers.PlayerSpawn += OnPlayerSpawn;
+            GetDataHandlers.KillMe += OnKillMe;
             ServerApi.Hooks.NetGreetPlayer.Register(this, OnGreet);
             
         }
@@ -175,7 +175,7 @@ namespace MirrorWarpback
 
         private void SendInfoMessageIfPresent( TSPlayer p, string msg )
         {
-            if( !(p == null) && !(String.IsNullOrEmpty(msg)) )
+            if( p != null && p.ConnectionAlive && !string.IsNullOrEmpty(msg) )
             {
                 p.SendInfoMessage(msg);
             }
@@ -183,16 +183,39 @@ namespace MirrorWarpback
 
         public void OnGreet(GreetPlayerEventArgs args)
         {
-            if (TShock.Players[args.Who].User == null)
+            TSPlayer p = TShock.Players[args.Who];
+
+            if (!p.ConnectionAlive)
+            {
+                return;
+            }
+
+            if (p.User == null)
             {
                 // Player hasn't logged in or has no account.
                 return;
             }
-
             
-            WarpbackData wb = WarpbackData.Get(TShock.Players[args.Who]);
+            WarpbackData wb = WarpbackData.Get(p);
 
             if( wb.Available ) {
+                wb.Clear();
+            }
+        }
+
+        private void OnKillMe(object sender, GetDataHandlers.KillMeEventArgs args)
+        {
+            TSPlayer p = TShock.Players[args.PlayerId];
+
+            if (!p.ConnectionAlive)
+            {
+                return;
+            }
+
+            WarpbackData wb = WarpbackData.Get(p);
+
+            if (wb.Available)
+            {
                 wb.Clear();
             }
         }
@@ -200,13 +223,17 @@ namespace MirrorWarpback
         private void OnPlayerSpawn(object sender, GetDataHandlers.SpawnEventArgs args)
         {
             TSPlayer p = TShock.Players[args.Player];
-            WarpbackData wb = WarpbackData.Get(TShock.Players[args.Player]);
 
+            if(!p.ConnectionAlive)
+            {
+                return;
+            }
+
+            WarpbackData wb = WarpbackData.Get(p);
+            
             if(wb.Available)
             {
                 wb.Teleport(Config.returnEffect);
-                //wb.Clear();
-                //return p.TPlayer.statLife > 0;
             }
             else if (wb.WaitingForSpawn)
             {
@@ -229,6 +256,11 @@ namespace MirrorWarpback
             }
 
             TSPlayer p = TShock.Players[args.PlayerId];
+            if(!p.ConnectionAlive)
+            {
+                return;
+            }
+
             if (!p.HasPermission("mw.warpback"))
             {
                 return;
