@@ -10,9 +10,20 @@
 <#@ import namespace="System.Text.RegularExpressions" #>
 <#@ import namespace="Newtonsoft.Json.Linq" #>
 <#@ output extension=".cs" #>
-using System;
+<#@ include file="FindProject.ttinclude" #>
+/*
+This partial class is auto-generated.
+*/
 
-namespace tShock_Util
+using System;
+<#
+	var serviceProvider = this.Host as IServiceProvider;
+	var dte = serviceProvider.GetService(typeof(EnvDTE.DTE)) as EnvDTE.DTE;
+	string currentDirectory = Path.GetDirectoryName(dte.ActiveDocument.FullName);
+	string projectName = FindProject().Name;
+#>
+
+namespace <#= projectName #>
 {
 	public partial class ItemId
 	{
@@ -22,11 +33,8 @@ namespace tShock_Util
 
 		public static implicit operator int(ItemId item) { return item._id; }
 
-		<#
-		var serviceProvider = this.Host as IServiceProvider;
-		var dte = serviceProvider.GetService(typeof(EnvDTE.DTE)) as EnvDTE.DTE;
-		string solutionDirectory = Path.GetDirectoryName(dte.ActiveDocument.FullName);
-		dynamic d = JObject.Parse(File.ReadAllText(Path.Combine(solutionDirectory,"Config.json")));
+<#
+		dynamic d = JObject.Parse(File.ReadAllText(Path.Combine(currentDirectory,"Config.json")));
         Dictionary<string, string> items = new Dictionary<string, string>();
 		using (FileStream stream = new FileStream(Path.Combine((string)d.TerrariaServerAPIDirectory, @"Terraria\Item.cs"), FileMode.Open))
         {
@@ -100,10 +108,10 @@ namespace tShock_Util
 		
 		foreach(KeyValuePair<string,string> pair in items)
 		{
-			#>
-				public static readonly ItemId <#= pair.Key #> = new ItemId(<#= pair.Value #>);
-			<#
+#>
+		public static readonly ItemId <#= pair.Key #> = new ItemId(<#= pair.Value #>);
+<#
 		}
-		#>
+#>
 	}
 }

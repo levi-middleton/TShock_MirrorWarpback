@@ -1,7 +1,6 @@
 ﻿using System.IO;
 using Newtonsoft.Json;
 using TShockAPI;
-using tShock_Util;
 
 namespace MirrorWarpback
 {

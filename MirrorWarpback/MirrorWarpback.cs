@@ -6,7 +6,6 @@ using System.Text;
 using System.Threading.Tasks;
 using Terraria;
 using TerrariaApi.Server;
-using tShock_Util;
 using TShockAPI;
 using System.IO.Streams;
 using static TShockAPI.GetDataHandlers;

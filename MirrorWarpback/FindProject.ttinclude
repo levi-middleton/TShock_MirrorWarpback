@@ -1,0 +1,14 @@
+﻿<#@ template debug="false" hostspecific="false" language="C#" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#+
+public EnvDTE.Project FindProject()
+{
+    IServiceProvider serviceProvider = (IServiceProvider)Host;
+    EnvDTE.DTE dte = (EnvDTE.DTE)serviceProvider.GetService(typeof(EnvDTE.DTE));
+    var item = dte.Solution.FindProjectItem(Host.TemplateFile);
+    if (item != null && item.ContainingProject != null)
+        return item.ContainingProject;
+    throw new InvalidOperationException("Can't find project");
+} #>
